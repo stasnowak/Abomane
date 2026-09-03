@@ -1,0 +1,319 @@
+---
+import type { CategoryRow, TagRow } from '../db/schema';
+import type { FormValues } from '../lib/view';
+import Field from './Field.astro';
+
+interface Props {
+  action: string;
+  values: FormValues;
+  errors: Record<string, string>;
+  categories: CategoryRow[];
+  allTags: TagRow[];
+  submitLabel: string;
+  id?: number | undefined;
+  cancelHref: string;
+}
+
+const { action, values, errors, categories, allTags, submitLabel, id, cancelHref } = Astro.props;
+
+const inputClass =
+  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30 dark:border-slate-700 dark:bg-slate-900 dark:placeholder:text-slate-600';
+
+const cyclePresets = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly (every 3 months)' },
+  { value: 'yearly', label: 'Yearly (every 12 months)' },
+  { value: 'custom', label: 'Custom interval' },
+  { value: 'one_time', label: 'One-time payment' },
+];
+
+const units = [
+  { value: 'day', label: 'days' },
+  { value: 'week', label: 'weeks' },
+  { value: 'month', label: 'months' },
+];
+---
+
+<form method="POST" action={action} class="flex flex-col gap-6">
+  {id !== undefined && <input type="hidden" name="id" value={id} />}
+
+  {
+    errors.form && (
+      <p class="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+        {errors.form}
+      </p>
+    )
+  }
+
+  <section class="flex flex-col gap-4">
+    <h2 class="text-sm font-semibold text-slate-500 uppercase dark:text-slate-500">The basics</h2>
+
+    <Field label="Name" name="name" error={errors.name}>
+      <input
+        id="name"
+        name="name"
+        type="text"
+        required
+        value={values.name}
+        placeholder="Netflix"
+        class={inputClass}
+      />
+    </Field>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      <Field label="Amount" name="amount" error={errors.amount} hint="Per charge, in euros.">
+        <div class="relative">
+          <input
+            id="amount"
+            name="amount"
+            type="text"
+            inputmode="decimal"
+            required
+            value={values.amount}
+            placeholder="12,99"
+            class:list={[inputClass, 'pr-8 tabular']}
+          />
+          <span
+            class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-slate-400"
+            >€</span
+          >
+        </div>
+      </Field>
+
+      <Field label="Category" name="categoryId" error={errors.categoryId}>
+        <select id="categoryId" name="categoryId" class={inputClass}>
+          <option value="">Uncategorized</option>
+          {
+            categories.map((category) => (
+              <option value={category.id} selected={values.categoryId === String(category.id)}>
+                {category.name}
+              </option>
+            ))
+          }
+        </select>
+      </Field>
+    </div>
+  </section>
+
+  <section class="flex flex-col gap-4">
+    <h2 class="text-sm font-semibold text-slate-500 uppercase dark:text-slate-500">Billing</h2>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      <Field label="Billing cycle" name="cyclePreset" error={errors.cyclePreset}>
+        <select id="cyclePreset" name="cyclePreset" class={inputClass} data-cycle-select>
+          {
+            cyclePresets.map((preset) => (
+              <option value={preset.value} selected={values.cyclePreset === preset.value}>
+                {preset.label}
+              </option>
+            ))
+          }
+        </select>
+      </Field>
+
+      <Field
+        label="First billing date"
+        name="firstBillingDate"
+        error={errors.firstBillingDate}
+        hint="Every later charge is counted from this day."
+      >
+        <input
+          id="firstBillingDate"
+          name="firstBillingDate"
+          type="date"
+          required
+          value={values.firstBillingDate}
+          class={inputClass}
+        />
+      </Field>
+    </div>
+
+    <div
+      class="grid gap-4 sm:grid-cols-2"
+      data-custom-interval
+      hidden={values.cyclePreset !== 'custom'}
+    >
+      <Field label="Charge every" name="intervalCount" error={errors.intervalCount}>
+        <input
+          id="intervalCount"
+          name="intervalCount"
+          type="number"
+          min="1"
+          step="1"
+          value={values.intervalCount}
+          class={inputClass}
+        />
+      </Field>
+
+      <Field label="Unit" name="intervalUnit" error={errors.intervalUnit}>
+        <select id="intervalUnit" name="intervalUnit" class={inputClass}>
+          {
+            units.map((unit) => (
+              <option value={unit.value} selected={values.intervalUnit === unit.value}>
+                {unit.label}
+              </option>
+            ))
+          }
+        </select>
+      </Field>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      <Field label="Status" name="status" error={errors.status}>
+        <select id="status" name="status" class={inputClass}>
+          <option value="active" selected={values.status === 'active'}>Active</option>
+          <option value="paused" selected={values.status === 'paused'}>Paused</option>
+          <option value="cancelled" selected={values.status === 'cancelled'}>Cancelled</option>
+        </select>
+      </Field>
+
+      <Field
+        label="End date"
+        name="endDate"
+        error={errors.endDate}
+        hint="Optional. The last day this is charged."
+      >
+        <input
+          id="endDate"
+          name="endDate"
+          type="date"
+          value={values.endDate}
+          class={inputClass}
+        />
+      </Field>
+    </div>
+  </section>
+
+  <section class="flex flex-col gap-4">
+    <h2 class="text-sm font-semibold text-slate-500 uppercase dark:text-slate-500">Cancellation</h2>
+    <p class="-mt-2 text-xs text-slate-500 dark:text-slate-500">
+      Fill these in and Abomane works out the date by which you have to give notice.
+    </p>
+
+    <div class="grid gap-4 sm:grid-cols-3">
+      <Field label="Notice period" name="noticePeriodCount" error={errors.noticePeriodCount}>
+        <input
+          id="noticePeriodCount"
+          name="noticePeriodCount"
+          type="number"
+          min="1"
+          step="1"
+          value={values.noticePeriodCount}
+          placeholder="3"
+          class={inputClass}
+        />
+      </Field>
+
+      <Field label="Notice unit" name="noticePeriodUnit" error={errors.noticePeriodUnit}>
+        <select id="noticePeriodUnit" name="noticePeriodUnit" class={inputClass}>
+          {
+            units.map((unit) => (
+              <option value={unit.value} selected={values.noticePeriodUnit === unit.value}>
+                {unit.label}
+              </option>
+            ))
+          }
+        </select>
+      </Field>
+
+      <Field
+        label="Minimum term"
+        name="minTermCount"
+        error={errors.minTermCount}
+        hint="In months."
+      >
+        <input
+          id="minTermCount"
+          name="minTermCount"
+          type="number"
+          min="1"
+          step="1"
+          value={values.minTermCount}
+          placeholder="12"
+          class={inputClass}
+        />
+      </Field>
+    </div>
+  </section>
+
+  <section class="flex flex-col gap-4">
+    <h2 class="text-sm font-semibold text-slate-500 uppercase dark:text-slate-500">Details</h2>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      <Field label="Vendor" name="vendor" error={errors.vendor}>
+        <input
+          id="vendor"
+          name="vendor"
+          type="text"
+          value={values.vendor}
+          placeholder="Netflix International B.V."
+          class={inputClass}
+        />
+      </Field>
+
+      <Field label="Link" name="url" error={errors.url}>
+        <input
+          id="url"
+          name="url"
+          type="text"
+          value={values.url}
+          placeholder="https://…"
+          class={inputClass}
+        />
+      </Field>
+    </div>
+
+    <Field
+      label="Tags"
+      name="tags"
+      error={errors.tags}
+      hint="Comma separated, for example: shared, family"
+    >
+      <input
+        id="tags"
+        name="tags"
+        type="text"
+        value={values.tags}
+        list="tag-suggestions"
+        class={inputClass}
+      />
+      <datalist id="tag-suggestions">
+        {allTags.map((tag) => <option value={tag.name} />)}
+      </datalist>
+    </Field>
+
+    <Field label="Notes" name="notes" error={errors.notes}>
+      <textarea id="notes" name="notes" rows="3" class={inputClass}>{values.notes}</textarea>
+    </Field>
+  </section>
+
+  <div class="flex flex-wrap items-center gap-3 border-t border-slate-200 pt-5 dark:border-slate-800">
+    <button
+      type="submit"
+      class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 focus:ring-2 focus:ring-violet-500/40 focus:outline-none"
+    >
+      {submitLabel}
+    </button>
+    <a
+      href={cancelHref}
+      class="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200/70 dark:text-slate-400 dark:hover:bg-slate-800"
+    >
+      Cancel
+    </a>
+  </div>
+</form>
+
+<script>
+  // Show the interval fields only for the custom preset. Without JavaScript they
+  // stay visible, which is harmless: the server ignores them for other presets.
+  const select = document.querySelector<HTMLSelectElement>('[data-cycle-select]');
+  const custom = document.querySelector<HTMLElement>('[data-custom-interval]');
+
+  if (select && custom) {
+    const sync = () => {
+      custom.hidden = select.value !== 'custom';
+    };
+    select.addEventListener('change', sync);
+    sync();
+  }
+</script>

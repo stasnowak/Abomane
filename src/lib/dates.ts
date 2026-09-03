@@ -196,3 +196,11 @@ export function formatDateShort(iso: string): string {
   const [y, m, d] = splitIso(iso);
   return `${d} ${MONTH_NAMES[m - 1].slice(0, 3)} ${y}`;
 }
+
+/** Short label for a bucket in the comparison strip: `Jan`, `Q1` or `2026`. */
+export function bucketLabel(period: Period): string {
+  const [y, m] = splitIso(period.start);
+  if (period.kind === 'month') return MONTH_NAMES[m - 1]!.slice(0, 3);
+  if (period.kind === 'quarter') return `Q${Math.floor((m - 1) / 3) + 1}`;
+  return String(y);
+}

@@ -1,0 +1,205 @@
+---
+import CategoryBadge from '../components/CategoryBadge.astro';
+import { listSubscriptions } from '../db/repo';
+import Base from '../layouts/Base.astro';
+import { addDays, daysBetween, formatDate, formatDateShort, todayIso } from '../lib/dates';
+import { formatEur } from '../lib/money';
+import { cancelByDate, cycleLabel, occurrencesInRange } from '../lib/schedule';
+
+const today = todayIso();
+
+const daysParam = Number(Astro.url.searchParams.get('days'));
+const days = Number.isInteger(daysParam) && daysParam > 0 && daysParam <= 365 ? daysParam : 30;
+const horizon = addDays(today, days);
+
+// Paused and cancelled subscriptions produce no charges past their stop date,
+// so the schedule maths filters them out without needing a status check here.
+const subscriptions = listSubscriptions({ status: 'all' });
+
+interface Charge {
+  date: string;
+  subscription: (typeof subscriptions)[number];
+}
+
+const charges: Charge[] = [];
+for (const subscription of subscriptions) {
+  for (const date of occurrencesInRange(subscription, today, horizon)) {
+    charges.push({ date, subscription });
+  }
+}
+charges.sort((a, b) =>
+  a.date === b.date ? a.subscription.name.localeCompare(b.subscription.name) : a.date < b.date ? -1 : 1,
+);
+
+const total = charges.reduce((sum, charge) => sum + charge.subscription.amountCents, 0);
+
+const byDate = new Map<string, Charge[]>();
+for (const charge of charges) {
+  const list = byDate.get(charge.date) ?? [];
+  list.push(charge);
+  byDate.set(charge.date, list);
+}
+
+let running = 0;
+const groups = [...byDate.entries()].map(([date, items]) => {
+  const dayTotal = items.reduce((sum, item) => sum + item.subscription.amountCents, 0);
+  running += dayTotal;
+  return { date, items, dayTotal, running, daysAway: daysBetween(today, date) };
+});
+
+const deadlines = subscriptions
+  .map((subscription) => ({ subscription, deadline: cancelByDate(subscription, today) }))
+  .filter((entry) => entry.deadline !== null)
+  .sort((a, b) => a.deadline!.daysLeft - b.deadline!.daysLeft)
+  .slice(0, 12);
+
+const soon = deadlines.filter((entry) => entry.deadline!.daysLeft <= 30);
+
+const cardClass =
+  'rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900';
+
+const ranges = [30, 60, 90];
+---
+
+<Base title="Upcoming" current="upcoming">
+  <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Upcoming</h1>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        {charges.length} charges in the next {days} days · {formatEur(total)} total
+      </p>
+    </div>
+    <div class="flex gap-1 rounded-lg bg-slate-200/70 p-1 dark:bg-slate-800">
+      {
+        ranges.map((range) => (
+          <a
+            href={`/upcoming?days=${range}`}
+            class:list={[
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              days === range
+                ? 'bg-white shadow-sm dark:bg-slate-950'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200',
+            ]}
+          >
+            {range} days
+          </a>
+        ))
+      }
+    </div>
+  </div>
+
+  {
+    soon.length > 0 && (
+      <div class="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/40">
+        <h2 class="mb-3 text-sm font-semibold text-amber-900 dark:text-amber-200">
+          Cancellation deadlines within 30 days
+        </h2>
+        <ul class="flex flex-col gap-2">
+          {soon.map((entry) => (
+            <li class="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+              <a
+                href={`/abos/${entry.subscription.id}`}
+                class="font-medium text-amber-900 hover:underline dark:text-amber-100"
+              >
+                {entry.subscription.name}
+              </a>
+              <span class="text-amber-800 dark:text-amber-300">
+                Give notice by {formatDate(entry.deadline!.deadline)} ·{' '}
+                {entry.deadline!.daysLeft} days left
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+
+  <div class="grid gap-5 lg:grid-cols-3">
+    <div class:list={[cardClass, 'lg:col-span-2']}>
+      <h2 class="mb-4 text-sm font-semibold text-slate-500 uppercase dark:text-slate-500">
+        Charges due
+      </h2>
+      {
+        groups.length === 0 ? (
+          <p class="text-sm text-slate-500 dark:text-slate-400">
+            Nothing due in the next {days} days.
+          </p>
+        ) : (
+          <ul class="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
+            {groups.map((group) => (
+              <li class="py-3 first:pt-0 last:pb-0">
+                <div class="mb-2 flex items-baseline justify-between gap-2">
+                  <p class="text-sm font-semibold">
+                    {formatDateShort(group.date)}
+                    <span class="ml-2 text-xs font-normal text-slate-500 dark:text-slate-500">
+                      {group.daysAway === 0
+                        ? 'today'
+                        : group.daysAway === 1
+                          ? 'tomorrow'
+                          : `in ${group.daysAway} days`}
+                    </span>
+                  </p>
+                  <p class="tabular text-xs text-slate-500 dark:text-slate-500">
+                    running {formatEur(group.running)}
+                  </p>
+                </div>
+                <ul class="flex flex-col gap-1.5">
+                  {group.items.map((item) => (
+                    <li class="flex items-center justify-between gap-3">
+                      <span class="flex min-w-0 items-center gap-2">
+                        <a
+                          href={`/abos/${item.subscription.id}`}
+                          class="truncate text-sm hover:underline"
+                        >
+                          {item.subscription.name}
+                        </a>
+                        <CategoryBadge
+                          name={item.subscription.categoryName}
+                          color={item.subscription.categoryColor}
+                        />
+                      </span>
+                      <span class="tabular text-sm font-medium whitespace-nowrap">
+                        {formatEur(item.subscription.amountCents)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </div>
+
+    <div class={cardClass}>
+      <h2 class="mb-4 text-sm font-semibold text-slate-500 uppercase dark:text-slate-500">
+        All cancellation deadlines
+      </h2>
+      {
+        deadlines.length === 0 ? (
+          <p class="text-sm text-slate-500 dark:text-slate-400">
+            No notice periods recorded yet. Add one when editing an Abo and the deadline shows up
+            here.
+          </p>
+        ) : (
+          <ul class="flex flex-col gap-3">
+            {deadlines.map((entry) => (
+              <li class="flex flex-col gap-0.5">
+                <a
+                  href={`/abos/${entry.subscription.id}`}
+                  class="text-sm font-medium hover:underline"
+                >
+                  {entry.subscription.name}
+                </a>
+                <span class="text-xs text-slate-500 dark:text-slate-500">
+                  Cancel by {formatDate(entry.deadline!.deadline)} · avoids{' '}
+                  {formatDate(entry.deadline!.renewal)} · {cycleLabel(entry.subscription)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </div>
+  </div>
+</Base>

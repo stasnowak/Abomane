@@ -1,0 +1,47 @@
+---
+import { actions } from 'astro:actions';
+import SubscriptionForm from '../../components/SubscriptionForm.astro';
+import { listCategories, listTags } from '../../db/repo';
+import Base from '../../layouts/Base.astro';
+import { todayIso } from '../../lib/dates';
+import { blankFormValues } from '../../lib/view';
+
+const result = Astro.getActionResult(actions.subscription.create);
+
+if (result && !result.error && result.data.ok) {
+  return Astro.redirect(`/abos/${result.data.id}`);
+}
+
+const failure = result && !result.error && !result.data.ok ? result.data : null;
+
+const values = { ...blankFormValues(todayIso()), ...(failure?.values ?? {}) };
+const errors = failure?.fieldErrors ?? {};
+
+const categories = listCategories();
+const allTags = listTags();
+---
+
+<Base title="New Abo" current="abos">
+  <div class="mb-6">
+    <a
+      href="/abos"
+      class="text-sm text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+      >← Back to all Abos</a
+    >
+    <h1 class="mt-2 text-2xl font-semibold tracking-tight">New Abo</h1>
+  </div>
+
+  <div
+    class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900"
+  >
+    <SubscriptionForm
+      action={actions.subscription.create}
+      values={values}
+      errors={errors}
+      categories={categories}
+      allTags={allTags}
+      submitLabel="Create Abo"
+      cancelHref="/abos"
+    />
+  </div>
+</Base>

@@ -1,0 +1,247 @@
+---
+import CategoryBadge from '../../components/CategoryBadge.astro';
+import StatusBadge from '../../components/StatusBadge.astro';
+import { listCategories, listSubscriptions, listTags } from '../../db/repo';
+import Base from '../../layouts/Base.astro';
+import { formatDateShort, todayIso } from '../../lib/dates';
+import { formatEur } from '../../lib/money';
+import { cycleLabel, nextBillingDate, normalizedMonthlyCents } from '../../lib/schedule';
+
+const url = Astro.url;
+const params = url.searchParams;
+
+const statusParam = params.get('status') ?? 'active';
+const status = (['active', 'paused', 'cancelled', 'all'] as const).includes(statusParam as never)
+  ? (statusParam as 'active' | 'paused' | 'cancelled' | 'all')
+  : 'active';
+
+const categoryParam = params.get('category');
+const categoryId =
+  categoryParam === null || categoryParam === ''
+    ? undefined
+    : categoryParam === 'none'
+      ? null
+      : Number(categoryParam);
+
+const tagParam = params.get('tag');
+const tagId = tagParam ? Number(tagParam) : undefined;
+
+const search = params.get('q') ?? '';
+const sort = params.get('sort') ?? 'name';
+
+const today = todayIso();
+
+const rows = listSubscriptions({
+  status,
+  ...(categoryId !== undefined ? { categoryId } : {}),
+  ...(tagId !== undefined && Number.isInteger(tagId) ? { tagId } : {}),
+  search,
+}).map((subscription) => ({
+  subscription,
+  next: nextBillingDate(subscription, today),
+  monthly: Math.round(normalizedMonthlyCents(subscription)),
+}));
+
+if (sort === 'amount') {
+  rows.sort((a, b) => b.monthly - a.monthly || b.subscription.amountCents - a.subscription.amountCents);
+} else if (sort === 'next') {
+  rows.sort((a, b) => {
+    if (a.next === b.next) return a.subscription.name.localeCompare(b.subscription.name);
+    if (!a.next) return 1;
+    if (!b.next) return -1;
+    return a.next < b.next ? -1 : 1;
+  });
+}
+
+const categories = listCategories();
+const tags = listTags();
+
+const monthlyTotal = rows.reduce((sum, row) => sum + row.monthly, 0);
+
+/** Builds a link that changes one filter and keeps the rest. */
+function withParam(key: string, value: string | null): string {
+  const next = new URLSearchParams(params);
+  if (value === null || value === '') next.delete(key);
+  else next.set(key, value);
+  const query = next.toString();
+  return query ? `/abos?${query}` : '/abos';
+}
+
+const statusTabs = [
+  { key: 'active', label: 'Active' },
+  { key: 'paused', label: 'Paused' },
+  { key: 'cancelled', label: 'Cancelled' },
+  { key: 'all', label: 'All' },
+];
+
+const selectClass =
+  'rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-900';
+---
+
+<Base title="Abos" current="abos">
+  <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Abos</h1>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        {rows.length}
+        {rows.length === 1 ? 'subscription' : 'subscriptions'} · {formatEur(monthlyTotal)} per month
+        normalized
+      </p>
+    </div>
+    <a
+      href="/abos/new"
+      class="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700"
+      >New Abo</a
+    >
+  </div>
+
+  <div class="mb-4 flex flex-wrap items-center gap-2">
+    {
+      statusTabs.map((tab) => (
+        <a
+          href={withParam('status', tab.key)}
+          class:list={[
+            'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
+            status === tab.key
+              ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+              : 'bg-slate-200/70 text-slate-600 hover:bg-slate-300/70 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700',
+          ]}
+        >
+          {tab.label}
+        </a>
+      ))
+    }
+  </div>
+
+  <form method="GET" action="/abos" class="mb-5 flex flex-wrap items-center gap-2">
+    <input type="hidden" name="status" value={status} />
+    <input
+      type="search"
+      name="q"
+      value={search}
+      placeholder="Search name, vendor or notes"
+      class:list={[selectClass, 'min-w-48 flex-1']}
+    />
+    <select name="category" class={selectClass}>
+      <option value="">All categories</option>
+      <option value="none" selected={categoryParam === 'none'}>Uncategorized</option>
+      {
+        categories.map((category) => (
+          <option value={category.id} selected={categoryParam === String(category.id)}>
+            {category.name}
+          </option>
+        ))
+      }
+    </select>
+    <select name="tag" class={selectClass}>
+      <option value="">All tags</option>
+      {
+        tags.map((tag) => (
+          <option value={tag.id} selected={tagParam === String(tag.id)}>
+            {tag.name}
+          </option>
+        ))
+      }
+    </select>
+    <select name="sort" class={selectClass}>
+      <option value="name" selected={sort === 'name'}>Sort by name</option>
+      <option value="next" selected={sort === 'next'}>Sort by next charge</option>
+      <option value="amount" selected={sort === 'amount'}>Sort by monthly cost</option>
+    </select>
+    <button
+      type="submit"
+      class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-200/70 dark:border-slate-700 dark:hover:bg-slate-800"
+      >Apply</button
+    >
+  </form>
+
+  {
+    rows.length === 0 ? (
+      <div class="rounded-xl border border-dashed border-slate-300 p-10 text-center dark:border-slate-700">
+        <p class="text-sm text-slate-500 dark:text-slate-400">
+          Nothing here yet. Add your first subscription and the overview fills itself in.
+        </p>
+        <a
+          href="/abos/new"
+          class="mt-4 inline-block rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+        >
+          New Abo
+        </a>
+      </div>
+    ) : (
+      <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <table class="hidden w-full text-sm sm:table">
+          <thead class="border-b border-slate-200 text-left text-xs text-slate-500 uppercase dark:border-slate-800 dark:text-slate-500">
+            <tr>
+              <th class="px-4 py-3 font-medium">Name</th>
+              <th class="px-4 py-3 font-medium">Category</th>
+              <th class="px-4 py-3 text-right font-medium">Amount</th>
+              <th class="px-4 py-3 font-medium">Cycle</th>
+              <th class="px-4 py-3 text-right font-medium">Per month</th>
+              <th class="px-4 py-3 font-medium">Next charge</th>
+              <th class="px-4 py-3 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            {rows.map(({ subscription, next, monthly }) => (
+              <tr class="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                <td class="px-4 py-3">
+                  <a href={`/abos/${subscription.id}`} class="font-medium hover:underline">
+                    {subscription.name}
+                  </a>
+                  {subscription.vendor && (
+                    <p class="text-xs text-slate-500 dark:text-slate-500">{subscription.vendor}</p>
+                  )}
+                </td>
+                <td class="px-4 py-3">
+                  <CategoryBadge name={subscription.categoryName} color={subscription.categoryColor} />
+                </td>
+                <td class="tabular px-4 py-3 text-right">{formatEur(subscription.amountCents)}</td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{cycleLabel(subscription)}</td>
+                <td class="tabular px-4 py-3 text-right text-slate-600 dark:text-slate-400">
+                  {monthly > 0 ? formatEur(monthly) : '—'}
+                </td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">
+                  {next ? formatDateShort(next) : '—'}
+                </td>
+                <td class="px-4 py-3">
+                  <StatusBadge status={subscription.status} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <ul class="divide-y divide-slate-100 sm:hidden dark:divide-slate-800">
+          {rows.map(({ subscription, next, monthly }) => (
+            <li>
+              <a href={`/abos/${subscription.id}`} class="flex flex-col gap-2 p-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="font-medium">{subscription.name}</p>
+                    <p class="text-xs text-slate-500 dark:text-slate-500">
+                      {cycleLabel(subscription)}
+                      {next ? ` · next ${formatDateShort(next)}` : ''}
+                    </p>
+                  </div>
+                  <div class="text-right">
+                    <p class="tabular font-medium">{formatEur(subscription.amountCents)}</p>
+                    {monthly > 0 && (
+                      <p class="tabular text-xs text-slate-500 dark:text-slate-500">
+                        {formatEur(monthly)}/mo
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={subscription.status} />
+                  <CategoryBadge name={subscription.categoryName} color={subscription.categoryColor} />
+                </div>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+</Base>

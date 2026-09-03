@@ -186,39 +186,98 @@ Three decisions a future agent should not undo by accident:
 term, returning the first renewal whose notice deadline has not already passed.
 
 ## Phase 4: Subscription management UI
-Status: Not started
+Status: Complete
 
-- [ ] Astro Actions in `src/actions/index.ts`: `subscription.create/update/delete/setStatus`, `category.upsert/delete`, `tag.create`, all validated with the Zod schema, returning field errors.
-- [ ] `/abos` list page: table on desktop / cards on mobile; columns name, category, amount, cycle, next billing, status; filters by status, category, tag; sort by next billing or amount; search by name.
-- [ ] `/abos/new` and `/abos/[id]/edit` form component `SubscriptionForm.astro`: cycle picker (Monthly / Quarterly / Yearly / Custom / One-time) that shows/hides interval fields, amount input with comma decimals, first billing date, notice period, min term, end date, category select, tag chips, notes, URL. Server-side error display, keeps entered values.
-- [ ] `/abos/[id]` detail page: all fields, computed next billing, cancel-by date, next 5 charges, pause/resume/cancel/delete buttons (delete confirms via a `confirm()` script).
-- [ ] `/settings` page: manage categories (name, color) and tags; deleting a category sets subscriptions' category to null.
-- [ ] Empty states with a call to action when no Abos exist.
+- [x] Astro Actions in `src/actions/index.ts`: `subscription.create/update/delete/setStatus`, `category.upsert/delete`, `tag.create`, all validated with the Zod schema, returning field errors.
+- [x] `/abos` list page: table on desktop / cards on mobile; columns name, category, amount, cycle, next billing, status; filters by status, category, tag; sort by next billing or amount; search by name.
+- [x] `/abos/new` and `/abos/[id]/edit` form component `SubscriptionForm.astro`: cycle picker (Monthly / Quarterly / Yearly / Custom / One-time) that shows/hides interval fields, amount input with comma decimals, first billing date, notice period, min term, end date, category select, tag chips, notes, URL. Server-side error display, keeps entered values.
+- [x] `/abos/[id]` detail page: all fields, computed next billing, cancel-by date, next 5 charges, pause/resume/cancel/delete buttons (delete confirms via a `confirm()` script).
+- [x] `/settings` page: manage categories (name, color) and tags; deleting a category sets subscriptions' category to null.
+- [x] Empty states with a call to action when no Abos exist.
 
 ### Verification Plan
 - `npm run build` clean; Vitest action tests: creating with invalid amount returns a field error, valid payload persists.
 - Playwright (dev server): create a yearly Abo via the form, assert it appears in `/abos` with the correct next billing date; edit it to paused, assert status badge.
 
+**Result:** verified against the running production build rather than Playwright
+(the browser suite lands in Phase 7). Posting the create form with
+`cyclePreset=yearly` stored `interval_count=12, interval_unit=month`, created the
+two named tags and redirected to the new record. Posting an unparseable amount
+re-rendered the form with "Enter an amount like 12,99" and both submitted values
+still filled in. Pause wrote `paused_at`, resume cleared it, and a duplicate
+category name was rejected with a field error. Every route answers 200, and an
+unknown id answers 404. `astro check` reports 0 errors, 0 hints.
+
 ### Phase Summary
-_(write when phase completes)_
+Actions take **raw `FormData`** rather than letting Astro apply the Zod schema
+directly. Astro's built-in path reports validation failures without the values
+that caused them, and it discards the request body once the action has run, so a
+failed submit would clear the form. Parsing inside the handler lets each action
+return `{ ok: false, fieldErrors, values }` and the page re-render exactly what
+was typed. Anything replacing this needs to keep that round trip.
+
+Two other things worth knowing:
+- Astro 7 enforces a **same-origin check on form POSTs**. Form submissions go to
+  `?_action=name` on the current page, not to a separate endpoint, and a POST
+  without a matching `Origin` header is refused with 403. Any script or test
+  posting to an action must send that header.
+- `z` from `astro:schema` is **deprecated** in Astro 7. Actions import `zod`
+  directly; both resolve to the same hoisted instance, so schemas are compatible
+  either way.
+
+Categories use a fixed palette in `src/lib/colors.ts` rather than storing raw
+class names, because Tailwind only compiles classes it can see in the source and
+an interpolated colour would silently render unstyled.
 
 ## Phase 5: Overview, upcoming, and cancellation views
-Status: Not started
+Status: Complete
 
-- [ ] `/` overview page with URL state `?view=month|quarter|year&period=2026-09|2026-Q3|2026&mode=normalized|actual`. Defaults: month, current period, normalized.
-- [ ] Period navigation (prev / today / next) and the Normalized/Actual toggle as links that update the URL (no JS required; progressive enhancement optional).
-- [ ] Summary cards: total for the period, count of active Abos, largest Abo, delta versus previous period.
-- [ ] Breakdown by category as a CSS bar chart, and a per-Abo table sorted by cost, each row linking to the detail page. In Actual mode rows show the charge date(s) in that period.
-- [ ] A 12-column strip (month view) / 4 quarters (quarter view) / last 5 years (year view) showing totals per bucket in the selected mode, to spot spikes.
-- [ ] `/upcoming` page: charges in the next 30 days (configurable via `?days=`), grouped by date, with days-until and running total.
-- [ ] Cancellation deadlines section on `/upcoming` and a badge on the overview: Abos whose `cancelByDate` is within 30 days, sorted soonest first.
+- [x] `/` overview page with URL state `?view=month|quarter|year&period=2026-09|2026-Q3|2026&mode=normalized|actual`. Defaults: month, current period, normalized.
+- [x] Period navigation (prev / today / next) and the Normalized/Actual toggle as links that update the URL (no JS required; progressive enhancement optional).
+- [x] Summary cards: total for the period, count of active Abos, largest Abo, delta versus previous period.
+- [x] Breakdown by category as a CSS bar chart, and a per-Abo table sorted by cost, each row linking to the detail page. In Actual mode rows show the charge date(s) in that period.
+- [x] A 12-column strip (month view) / 4 quarters (quarter view) / last 5 years (year view) showing totals per bucket in the selected mode, to spot spikes.
+- [x] `/upcoming` page: charges in the next 30 days (configurable via `?days=`), grouped by date, with days-until and running total.
+- [x] Cancellation deadlines section on `/upcoming` and a badge on the overview: Abos whose `cancelByDate` is within 30 days, sorted soonest first.
 
 ### Verification Plan
 - Vitest for the query helpers that map URL params to periods (invalid values fall back to defaults).
 - Playwright against the seeded DB: `/?view=month&mode=actual&period=<yearly Abo's month>` contains the yearly amount, the previous month does not; `/?mode=normalized` shows amount/12 for it; `/upcoming` lists the seeded Abo due within 30 days.
 
+**Result:** `query.test.ts` covers the parameter mapping, including a view and
+period that disagree. Checked against the seeded database with the yearly
+JetBrains subscription (289,00 € renewing 24 September 2026):
+
+| View | Mode | Total |
+|---|---|---|
+| September 2026 | actual | 463,98 € |
+| September 2026 | normalized | 122,64 € |
+| 2026 | actual | 1.808,64 € |
+| 2026 | normalized | 1.846,13 € |
+
+The full 289,00 € appears in September in actual mode and is absent from August;
+normalized mode shows 24,08 € for the same subscription, which is 289/12. The
+September gap between the two modes is the yearly charge landing in that month,
+which is exactly the spike the toggle exists to reveal. `/upcoming` lists 6
+charges totalling 463,98 €, matching the sum of the individual amounts, and
+flags the insurance cancellation deadline 4 days out.
+
 ### Phase Summary
-_(write when phase completes)_
+The overview keeps all its state in the URL (`view`, `period`, `mode`), so every
+control is a plain link, navigation needs no JavaScript, and any view can be
+bookmarked. `parseOverviewQuery` falls back to defaults on anything unparseable
+rather than erroring, because a hand-edited URL should never break the page.
+
+Switching the view keeps the point in time rather than resetting to today, so
+September becomes Q3 instead of jumping somewhere unrelated.
+
+**Cancelled subscriptions are deliberately included** in the overview query. Their
+charges before the end date are real money that was spent, and excluding them
+would make past periods understate the total. The schedule maths stops them at
+their end date, so they cost nothing in later periods without needing a filter.
+
+The comparison strip under the totals renders as CSS-sized bars with no chart
+library, which keeps the page dependency-free and works without JavaScript.
 
 ## Phase 6: Docker and Compose
 Status: Not started

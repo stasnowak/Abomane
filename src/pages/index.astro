@@ -1,7 +1,306 @@
 ---
+import CategoryBadge from '../components/CategoryBadge.astro';
+import { listSubscriptions } from '../db/repo';
 import Base from '../layouts/Base.astro';
+import {
+  bucketLabel,
+  formatDateShort,
+  periodContaining,
+  periodLabel,
+  shiftPeriod,
+  todayIso,
+} from '../lib/dates';
+import { swatch } from '../lib/colors';
+import { formatEur, formatEurRounded } from '../lib/money';
+import { bucketsFor, overviewHref, parseOverviewQuery } from '../lib/query';
+import { cancelByDate, cycleLabel, periodTotals } from '../lib/schedule';
+
+const today = todayIso();
+const query = parseOverviewQuery(Astro.url.searchParams, today);
+const { period, mode, kind } = query;
+
+// Cancelled subscriptions stay in the list: their charges before the end date
+// are real, and hiding them would make past periods understate what was spent.
+const subscriptions = listSubscriptions({ status: 'all' });
+
+const totals = periodTotals(subscriptions, period, mode);
+const previous = periodTotals(subscriptions, shiftPeriod(period, -1), mode);
+const delta = totals.totalCents - previous.totalCents;
+
+const buckets = bucketsFor(period).map((bucket) => ({
+  period: bucket,
+  total: periodTotals(subscriptions, bucket, mode).totalCents,
+}));
+const bucketMax = Math.max(1, ...buckets.map((bucket) => bucket.total));
+
+const categoryMax = Math.max(1, ...totals.byCategory.map((entry) => entry.cents));
+
+const activeCount = subscriptions.filter((sub) => sub.status === 'active').length;
+const largest = totals.rows[0];
+
+const deadlines = subscriptions
+  .map((subscription) => ({ subscription, deadline: cancelByDate(subscription, today) }))
+  .filter(
+    (entry): entry is { subscription: (typeof subscriptions)[number]; deadline: NonNullable<ReturnType<typeof cancelByDate>> } =>
+      entry.deadline !== null && entry.deadline.daysLeft <= 30,
+  )
+  .sort((a, b) => a.deadline.daysLeft - b.deadline.daysLeft);
+
+const views = [
+  { kind: 'month' as const, label: 'Monthly' },
+  { kind: 'quarter' as const, label: 'Quarterly' },
+  { kind: 'year' as const, label: 'Yearly' },
+];
+
+const cardClass =
+  'rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900';
+
+const modeExplainer =
+  mode === 'normalized'
+    ? 'Costs are spread evenly, so a yearly Abo counts as one twelfth each month.'
+    : 'Only charges that actually land in this period are counted.';
 ---
 
 <Base title="Overview" current="overview">
-  <h1 class="text-2xl font-semibold">Overview</h1>
+  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-2xl font-semibold tracking-tight">Overview</h1>
+    <div class="flex gap-1 rounded-lg bg-slate-200/70 p-1 dark:bg-slate-800">
+      {
+        views.map((view) => (
+          <a
+            href={overviewHref(query, { kind: view.kind })}
+            class:list={[
+              'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              kind === view.kind
+                ? 'bg-white shadow-sm dark:bg-slate-950'
+                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200',
+            ]}
+          >
+            {view.label}
+          </a>
+        ))
+      }
+    </div>
+  </div>
+
+  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-1">
+      <a
+        href={overviewHref(query, { period: shiftPeriod(period, -1) })}
+        aria-label="Previous period"
+        class="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-200/70 dark:border-slate-700 dark:hover:bg-slate-800"
+        >←</a
+      >
+      <span class="min-w-40 px-2 text-center text-sm font-medium">{periodLabel(period)}</span>
+      <a
+        href={overviewHref(query, { period: shiftPeriod(period, 1) })}
+        aria-label="Next period"
+        class="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm hover:bg-slate-200/70 dark:border-slate-700 dark:hover:bg-slate-800"
+        >→</a
+      >
+      <a
+        href={overviewHref(query, { period: periodContaining(kind, today) })}
+        class="ml-1 rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-200/70 dark:text-slate-400 dark:hover:bg-slate-800"
+        >Today</a
+      >
+    </div>
+
+    <div
+      class="flex gap-1 rounded-lg bg-slate-200/70 p-1 dark:bg-slate-800"
+      role="group"
+      aria-label="Cost mode"
+    >
+      <a
+        href={overviewHref(query, { mode: 'normalized' })}
+        aria-pressed={mode === 'normalized'}
+        class:list={[
+          'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+          mode === 'normalized'
+            ? 'bg-white shadow-sm dark:bg-slate-950'
+            : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200',
+        ]}>Normalized</a
+      >
+      <a
+        href={overviewHref(query, { mode: 'actual' })}
+        aria-pressed={mode === 'actual'}
+        class:list={[
+          'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+          mode === 'actual'
+            ? 'bg-white shadow-sm dark:bg-slate-950'
+            : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200',
+        ]}>Actual</a
+      >
+    </div>
+  </div>
+
+  <div class="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class={cardClass}>
+      <p class="text-xs font-medium text-slate-500 uppercase dark:text-slate-500">
+        Total {periodLabel(period)}
+      </p>
+      <p class="tabular mt-1 text-2xl font-semibold">{formatEur(totals.totalCents)}</p>
+      <p class="mt-1 text-xs text-slate-500 dark:text-slate-500">
+        {
+          delta === 0
+            ? 'Unchanged from the period before'
+            : `${delta > 0 ? '+' : '−'}${formatEur(Math.abs(delta))} vs. previous`
+        }
+      </p>
+    </div>
+
+    <div class={cardClass}>
+      <p class="text-xs font-medium text-slate-500 uppercase dark:text-slate-500">Active Abos</p>
+      <p class="tabular mt-1 text-2xl font-semibold">{activeCount}</p>
+      <p class="mt-1 text-xs text-slate-500 dark:text-slate-500">
+        {totals.rows.length} counted in this period
+      </p>
+    </div>
+
+    <div class={cardClass}>
+      <p class="text-xs font-medium text-slate-500 uppercase dark:text-slate-500">Largest</p>
+      <p class="mt-1 truncate text-2xl font-semibold">{largest?.subscription.name ?? '—'}</p>
+      <p class="tabular mt-1 text-xs text-slate-500 dark:text-slate-500">
+        {largest ? formatEur(largest.cents) : 'Nothing in this period'}
+      </p>
+    </div>
+
+    <div class={cardClass}>
+      <p class="text-xs font-medium text-slate-500 uppercase dark:text-slate-500">Cancel soon</p>
+      <p class="tabular mt-1 text-2xl font-semibold">{deadlines.length}</p>
+      <p class="mt-1 text-xs text-slate-500 dark:text-slate-500">
+        {
+          deadlines.length === 0
+            ? 'No deadlines in the next 30 days'
+            : (
+                <a href="/upcoming" class="text-violet-600 hover:underline dark:text-violet-400">
+                  See the deadlines →
+                </a>
+              )
+        }
+      </p>
+    </div>
+  </div>
+
+  <p class="mb-5 text-xs text-slate-500 dark:text-slate-500">{modeExplainer}</p>
+
+  <div class:list={[cardClass, 'mb-5']}>
+    <h2 class="mb-4 text-sm font-semibold text-slate-500 uppercase dark:text-slate-500">
+      {kind === 'month' ? 'Across the year' : kind === 'quarter' ? 'Across the quarters' : 'Across the years'}
+    </h2>
+    <div class="flex items-end gap-1 overflow-x-auto sm:gap-2">
+      {
+        buckets.map((bucket) => {
+          const height = Math.max(2, Math.round((bucket.total / bucketMax) * 100));
+          const isCurrent = bucket.period.start === period.start;
+          return (
+            <a
+              href={overviewHref(query, { period: bucket.period })}
+              class="group flex min-w-10 flex-1 flex-col items-center gap-1.5"
+              title={`${periodLabel(bucket.period)}: ${formatEur(bucket.total)}`}
+            >
+              <span class="tabular text-[10px] text-slate-500 dark:text-slate-500">
+                {bucket.total > 0 ? formatEurRounded(bucket.total) : ''}
+              </span>
+              <span class="flex h-24 w-full items-end">
+                <span
+                  class:list={[
+                    'w-full rounded-t transition-colors',
+                    isCurrent
+                      ? 'bg-violet-600 dark:bg-violet-500'
+                      : 'bg-slate-300 group-hover:bg-violet-400 dark:bg-slate-700 dark:group-hover:bg-violet-600',
+                  ]}
+                  style={`height: ${height}%`}
+                />
+              </span>
+              <span
+                class:list={[
+                  'text-[10px] whitespace-nowrap',
+                  isCurrent ? 'font-semibold' : 'text-slate-500 dark:text-slate-500',
+                ]}
+              >
+                {bucketLabel(bucket.period)}
+              </span>
+            </a>
+          );
+        })
+      }
+    </div>
+  </div>
+
+  <div class="grid gap-5 lg:grid-cols-3">
+    <div class={cardClass}>
+      <h2 class="mb-4 text-sm font-semibold text-slate-500 uppercase dark:text-slate-500">
+        By category
+      </h2>
+      {
+        totals.byCategory.length === 0 ? (
+          <p class="text-sm text-slate-500 dark:text-slate-400">Nothing in this period.</p>
+        ) : (
+          <ul class="flex flex-col gap-3">
+            {totals.byCategory.map((entry) => (
+              <li>
+                <div class="mb-1 flex items-baseline justify-between gap-2 text-sm">
+                  <span class="truncate">{entry.name}</span>
+                  <span class="tabular font-medium">{formatEur(entry.cents)}</span>
+                </div>
+                <div class="h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div
+                    class:list={['h-full rounded-full', swatch(entry.color).bar]}
+                    style={`width: ${Math.max(2, Math.round((entry.cents / categoryMax) * 100))}%`}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </div>
+
+    <div class:list={[cardClass, 'lg:col-span-2']}>
+      <h2 class="mb-4 text-sm font-semibold text-slate-500 uppercase dark:text-slate-500">
+        Every Abo in {periodLabel(period)}
+      </h2>
+      {
+        totals.rows.length === 0 ? (
+          <p class="text-sm text-slate-500 dark:text-slate-400">
+            Nothing charged in this period.{' '}
+            <a href="/abos/new" class="text-violet-600 hover:underline dark:text-violet-400">
+              Add an Abo
+            </a>
+            .
+          </p>
+        ) : (
+          <ul class="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
+            {totals.rows.map((row) => (
+              <li class="flex items-center justify-between gap-3 py-2.5">
+                <div class="min-w-0">
+                  <a
+                    href={`/abos/${row.subscription.id}`}
+                    class="text-sm font-medium hover:underline"
+                  >
+                    {row.subscription.name}
+                  </a>
+                  <p class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-500">
+                    <CategoryBadge
+                      name={row.subscription.categoryName}
+                      color={row.subscription.categoryColor}
+                    />
+                    <span>{cycleLabel(row.subscription)}</span>
+                    {row.dates.length > 0 && (
+                      <span>
+                        {row.dates.map((date) => formatDateShort(date)).join(', ')}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <span class="tabular text-sm font-medium whitespace-nowrap">
+                  {formatEur(row.cents)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </div>
+  </div>
 </Base>
