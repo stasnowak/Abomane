@@ -79,53 +79,111 @@ subscription_tags   subscription_id, tag_id (pk both)
   no notice period is set.
 
 ## Phase 1: Project scaffold
-Status: Not started
+Status: Complete
 
-- [ ] `npm create astro@latest` (minimal template, TypeScript strict) at repo root; commit `package-lock.json`.
-- [ ] Add `@astrojs/node` (standalone) with `output: 'server'` in `astro.config.mjs`; `server: { host: true, port: 4321 }`.
-- [ ] Add Tailwind v4 via `@tailwindcss/vite` and a global `src/styles/global.css` with `@import "tailwindcss";`.
-- [ ] Add ESLint (astro plugin, typescript-eslint), Prettier (astro + tailwind plugins), Vitest; scripts: `dev`, `build`, `preview`, `lint`, `format`, `test`, `typecheck` (`astro check`).
-- [ ] Base layout `src/layouts/Base.astro`: header with nav (Overview, Abos, Upcoming, Settings), dark-mode-aware colors, mobile-friendly.
-- [ ] `.gitignore`, `.dockerignore`, `.env.example` (`DATABASE_PATH`, `PORT`, `HOST`).
-- [ ] `README.md` skeleton (what it is, quick start placeholder).
+- [x] `npm create astro@latest` (minimal template, TypeScript strict) at repo root; commit `package-lock.json`.
+- [x] Add `@astrojs/node` (standalone) with `output: 'server'` in `astro.config.mjs`; `server: { host: true, port: 4321 }`.
+- [x] Add Tailwind v4 via `@tailwindcss/vite` and a global `src/styles/global.css` with `@import "tailwindcss";`.
+- [x] Add ESLint (astro plugin, typescript-eslint), Prettier (astro + tailwind plugins), Vitest; scripts: `dev`, `build`, `preview`, `lint`, `format`, `test`, `typecheck` (`astro check`).
+- [x] Base layout `src/layouts/Base.astro`: header with nav (Overview, Abos, Upcoming, Settings), dark-mode-aware colors, mobile-friendly.
+- [x] `.gitignore`, `.dockerignore`, `.env.example` (`DATABASE_PATH`, `PORT`, `HOST`).
+- [x] `README.md` skeleton (what it is, quick start placeholder).
 
 ### Verification Plan
 - `npm ci && npm run typecheck && npm run lint && npm run build` exits 0.
 - `npm run preview` then `curl -s localhost:4321/ | grep -q Abomane` succeeds.
 
+**Result:** `astro check` reports 0 errors across 21 files, `eslint .` is clean,
+`astro build` completes, and the built server answers 200 on `/`.
+
 ### Phase Summary
-_(write when phase completes)_
+The ecosystem had moved well past the versions the plan assumed, so the scaffold
+targets **Astro 7.2.10**, not Astro 5, with **Tailwind 4.3.3**, **Zod 4.5.4**,
+**Vitest 4.1.11** and **Drizzle 0.45.2**. Astro's `output: 'server'` option and
+the Actions API are unchanged, so the plan's architecture survived intact.
+
+`npm create astro` could not be used: the template fetch reaches GitHub, which
+this environment's egress proxy blocks. The project was therefore assembled by
+hand, which produced the same result with fewer unused files. TypeScript is
+pinned to 5.x rather than the newly released 7.x, because `@astrojs/check` has
+not been validated against the native port.
+
+Notable deviations from the plan's assumptions:
+- Node 22 is used for the runtime, and `tsx` runs TypeScript scripts. Node's own
+  type stripping cannot resolve the `.js`-suffixed ESM imports the codebase uses.
+- Migrations in production run through `scripts/migrate.mjs`, plain JavaScript
+  with no TypeScript loader and no dependency on the built bundle, so a failed
+  upgrade stops the container before the server binds.
 
 ## Phase 2: Data layer
-Status: Not started
+Status: Complete
 
-- [ ] Add `drizzle-orm`, `better-sqlite3`, `drizzle-kit`; `drizzle.config.ts` pointing at `src/db/schema.ts`, migrations in `drizzle/`.
-- [ ] Implement schema from **Data model** in `src/db/schema.ts`; generate initial migration with `drizzle-kit generate`.
-- [ ] `src/db/client.ts`: opens `DATABASE_PATH` (default `./data/abomane.db`), creates parent dir, enables WAL + foreign keys, runs `migrate()` on first import.
-- [ ] `src/db/repo.ts`: typed functions `listSubscriptions(filter)`, `getSubscription(id)`, `createSubscription`, `updateSubscription`, `deleteSubscription`, `setStatus`, `listCategories`, `upsertCategory`, `deleteCategory`, `listTags`, `setSubscriptionTags`.
-- [ ] Zod schema `src/lib/validation.ts` for the subscription form (amount as decimal string → cents, dates ISO, interval rules, one-time has no interval).
-- [ ] `scripts/seed.ts` inserting ~8 example Abos covering every cycle type, one paused, one cancelled, with categories and tags. Script `npm run seed`.
+- [x] Add `drizzle-orm`, `better-sqlite3`, `drizzle-kit`; `drizzle.config.ts` pointing at `src/db/schema.ts`, migrations in `drizzle/`.
+- [x] Implement schema from **Data model** in `src/db/schema.ts`; generate initial migration with `drizzle-kit generate`.
+- [x] `src/db/client.ts`: opens `DATABASE_PATH` (default `./data/abomane.db`), creates parent dir, enables WAL + foreign keys, runs `migrate()` on first import.
+- [x] `src/db/repo.ts`: typed functions `listSubscriptions(filter)`, `getSubscription(id)`, `createSubscription`, `updateSubscription`, `deleteSubscription`, `setStatus`, `listCategories`, `upsertCategory`, `deleteCategory`, `listTags`, `setSubscriptionTags`.
+- [x] Zod schema `src/lib/validation.ts` for the subscription form (amount as decimal string → cents, dates ISO, interval rules, one-time has no interval).
+- [x] `scripts/seed.ts` inserting ~8 example Abos covering every cycle type, one paused, one cancelled, with categories and tags. Script `npm run seed`.
 
 ### Verification Plan
 - `npm run seed && node -e "..."` (or a Vitest test using a temp DB path) shows 8 subscriptions and 4 categories.
 - Vitest: `repo.test.ts` creates a temp SQLite file, runs migrations, does create/update/delete round trip; `npm test` passes.
 
+**Result:** the seed inserts 9 subscriptions, 4 categories and 3 tags, covering
+monthly, quarterly, yearly, a 45-day custom interval, a one-time payment, one
+paused and one cancelled row. `repo.test.ts` runs against a temporary SQLite
+file and passes.
+
 ### Phase Summary
-_(write when phase completes)_
+The schema follows the plan. Two behaviours are worth knowing before changing
+this layer:
+
+- **Pausing and cancelling always write a date.** `setStatus` records `pausedAt`
+  or `endDate`, and the validation layer backfills one when a form omits it.
+  Without a hard stop the schedule maths would project charges forever, so the
+  invariant "a non-active subscription has a stop date" is load-bearing.
+- **Deleting a category detaches its subscriptions** rather than deleting them,
+  via `on delete set null`. Tag links cascade instead, and `pruneOrphanTags`
+  clears tags left behind.
+
+Reads go through `listSubscriptions`, which joins the category and batches tag
+lookups into one extra query rather than one per row.
 
 ## Phase 3: Schedule and cost domain logic
-Status: Not started
+Status: Complete
 
-- [ ] `src/lib/dates.ts`: `addInterval(date, count, unit)` with end-of-month clamping, `startOfPeriod`, `endOfPeriod`, `periodLabel` (e.g. "September 2026", "Q3 2026", "2026"), `daysBetween`. Use plain ISO date strings (`YYYY-MM-DD`), no time zones.
-- [ ] `src/lib/schedule.ts`: `nextBillingDate`, `occurrencesInRange`, `normalizedMonthlyCents`, `periodTotals`, `cancelByDate` per **Domain rules**.
-- [ ] `src/lib/money.ts`: `formatEur(cents)` → `1.234,56 €`, `parseEur("12,99")` → 1299.
-- [ ] Vitest tables for: monthly from the 31st across Feb; quarterly anchored to 15 Jan; yearly in Actual month view appears only in its month; custom every 45 days; one-time inside/outside range; paused/cancelled cut-offs; normalized totals equal actual totals over a full year for monthly Abos; `cancelByDate` with 3-month notice and 12-month min term.
+- [x] `src/lib/dates.ts`: `addInterval(date, count, unit)` with end-of-month clamping, `startOfPeriod`, `endOfPeriod`, `periodLabel` (e.g. "September 2026", "Q3 2026", "2026"), `daysBetween`. Use plain ISO date strings (`YYYY-MM-DD`), no time zones.
+- [x] `src/lib/schedule.ts`: `nextBillingDate`, `occurrencesInRange`, `normalizedMonthlyCents`, `periodTotals`, `cancelByDate` per **Domain rules**.
+- [x] `src/lib/money.ts`: `formatEur(cents)` → `1.234,56 €`, `parseEur("12,99")` → 1299.
+- [x] Vitest tables for: monthly from the 31st across Feb; quarterly anchored to 15 Jan; yearly in Actual month view appears only in its month; custom every 45 days; one-time inside/outside range; paused/cancelled cut-offs; normalized totals equal actual totals over a full year for monthly Abos; `cancelByDate` with 3-month notice and 12-month min term.
 
 ### Verification Plan
 - `npx vitest run src/lib` passes with ≥ 25 assertions; `npm run typecheck` clean.
 
+**Result:** 66 tests pass in total, every case from the checklist covered.
+`astro check` reports 0 errors.
+
 ### Phase Summary
-_(write when phase completes)_
+The cost model lives in pure functions over ISO date strings, with no `Date`
+objects in the domain: billing dates are calendar facts, and a time zone must
+never be able to shift one across a month boundary.
+
+Three decisions a future agent should not undo by accident:
+
+- **Occurrences are computed from the anchor, never iteratively.** The k-th
+  charge is `addMonths(firstBillingDate, count * k)`. Adding one month k times
+  instead would make a subscription billed on the 31st drift permanently to the
+  28th after passing February. `addMonths` clamps to the end of the target month
+  but keeps the original day for later steps.
+- **One-time payments contribute nothing to normalized views.** They are real
+  cash out, but folding them into a monthly average would misstate the ongoing
+  commitment. They appear at full value in actual mode.
+- **`indexAtOrAfter` seeds its search arithmetically.** A daily subscription
+  queried decades after its start resolves in a few steps rather than thousands,
+  which keeps `occurrencesInRange` cheap enough to call per row per page.
+
+`cancelByDate` walks forward from the later of today and the end of the minimum
+term, returning the first renewal whose notice deadline has not already passed.
 
 ## Phase 4: Subscription management UI
 Status: Not started

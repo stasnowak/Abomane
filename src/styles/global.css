@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+/*
+ * The app follows the operating system theme. There is no toggle: this is a
+ * personal tool that lives on one machine, and a theme switch would be one more
+ * piece of state to persist for no real benefit.
+ */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+/* Tabular figures keep money columns aligned as values change. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
