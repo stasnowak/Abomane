@@ -299,7 +299,7 @@ library, which keeps the page dependency-free and works without JavaScript.
 
 ## Phase 6: Docker and Compose
 
-Status: Not started
+Status: Complete (image build unverified in this environment, see below)
 
 - [x] Multi-stage `Dockerfile`: `deps` (npm ci), `build` (astro build), `runtime` (`node:22-bookworm-slim`, non-root user, only `dist/`, `drizzle/`, production `node_modules`).
 - [x] `docker-entrypoint.sh`: create `/data` if missing, run migrations (`node dist/migrate.mjs` built from `src/db/migrate.ts`), then `node dist/server/entry.mjs`.
@@ -315,13 +315,59 @@ Status: Not started
 - Create an Abo through the UI, `docker compose down && docker compose up -d`, the Abo is still there (volume persistence).
 - `docker compose down -v` leaves no orphan containers; image size reported and under ~250 MB.
 
+**Not run here. The image build could not be executed in this environment.**
+Docker and the daemon are both available, but pulling any image from Docker Hub
+fails: the egress proxy answers `403 Forbidden` for
+`production.cloudfront.docker.com`, which serves the registry blobs. That is an
+organization egress policy, and the proxy's own documentation says to report such
+a denial rather than route around it. **Anyone continuing this work should run
+the three checks above on a machine with registry access before trusting the
+image.**
+
+What _was_ verified, which covers everything except the image layers themselves:
+
+- `docker compose config` renders both the base file and the override example
+  without error, and the merged port bindings are correct (see the summary).
+- `docker-entrypoint.sh` passes `sh -n`.
+- **The container's runtime path was reproduced locally.** A scratch directory
+  received only what the runtime stage copies (`dist/`, `drizzle/`,
+  `scripts/migrate.mjs`, `package*.json`), then `npm ci --omit=dev` installed
+  production dependencies only (200 packages). Running `scripts/migrate.mjs`
+  against an empty path created all five tables plus the migrations table, and
+  the server then started under the image's exact environment variables.
+  `/healthz` answered `{"status":"ok"}`, every page answered 200, unknown paths
+  answered 404, and the healthcheck command from the `HEALTHCHECK` line exited 0.
+  This is the part of the Docker setup most likely to be wrong, and it works.
+
 ### Phase Summary
 
-_(write when phase completes)_
+Deviations from the plan worth knowing:
+
+- **The default port binding is `127.0.0.1:4321`, not `0.0.0.0`.** Abomane has no
+  login, so publishing on every interface by default would put the data on the
+  network for anyone who can reach the host. Local use, which is the primary use
+  case, works fine on localhost; exposing it is a deliberate edit.
+- The override example uses **`!override` on the ports list**. Compose _appends_
+  list entries when merging, so without it the override would keep the localhost
+  binding and add the public one, leaving the app exposed anyway. This was caught
+  by inspecting the merged `docker compose config` output, not by reading the
+  file.
+- The `# syntax=docker/dockerfile:1` directive was **removed**: it makes BuildKit
+  fetch a frontend image at build time, which is one more registry dependency for
+  no benefit here.
+- Migrations run from `scripts/migrate.mjs`, plain JavaScript, rather than a
+  compiled `dist/migrate.mjs`. The upgrade path then depends on neither a
+  TypeScript loader nor the application bundle.
+- Debian slim rather than Alpine, because `better-sqlite3` ships prebuilt glibc
+  binaries and the image needs no compiler toolchain.
+
+`/data` is created and chowned to the `node` user **in the image**, so a named
+volume mounted there inherits that ownership. Without it the volume would be
+root-owned and the unprivileged server could not write its own database.
 
 ## Phase 7: End-to-end smoke and polish
 
-Status: Not started
+Status: Complete
 
 - [x] Playwright config with a `compose` project that targets `http://localhost:4321`; smoke spec covering create → overview → upcoming → delete.
 - [x] Responsive pass on 375 px and 1280 px widths; dark-mode pass; keyboard focus styles; form labels and `aria-*` for the toggle and nav.
@@ -333,14 +379,184 @@ Status: Not started
 - `npx playwright test` passes against the running compose stack.
 - `npm run lint && npm run typecheck && npm test` clean on the final commit.
 
+**Result:** 18 Playwright tests pass (9 specs across a desktop and a mobile
+viewport). They run against the real production build rather than the compose
+stack, since the image could not be built here; the config's `webServer` runs
+`npm run build` and the same `dist/server/entry.mjs` the container starts, so the
+same code is under test.
+
+Final state: `eslint .` clean, `prettier --check .` clean, `astro check` reports
+0 errors, 0 warnings and 0 hints, and 76 unit tests pass.
+
 ### Phase Summary
 
-_(write when phase completes)_
+The end-to-end suite caught **a real bug the unit tests could not**: deleting a
+subscription answered 404 instead of redirecting. The detail page loaded the
+record before reading the action result, so once the row was gone the lookup
+failed and the successful delete rendered as "not found". The fix was to read the
+action result first; the ordering now carries a comment saying why.
+
+Two testing constraints are baked into the spec and should not be undone:
+
+- **Tests must not assume an empty database.** Both viewport projects run the
+  same specs against one shared server, so every record gets a unique name and
+  assertions are scoped to its own row rather than to page-wide totals. The exact
+  totals arithmetic is covered by the unit tests, which is the right place for
+  it.
+- **Rows are matched by text on a `data-testid`, filtered to `:visible`.** The
+  Abos list renders a desktop table and a mobile card list simultaneously and
+  hides one with CSS, so a name matches twice in the DOM; the mobile card also
+  wraps the whole row in one link, which makes its accessible name the entire
+  card. Matching by link role, or taking `.first()`, breaks on one viewport or
+  the other.
+
+`playwright.config.ts` honours a `CHROMIUM_PATH` environment variable so images
+that ship their own browser can be used instead of Playwright's managed one.
+Unset, it behaves normally, which is what CI does.
 
 ## Final Recap
 
-_(write when all phases complete: summary of the entire piece of work)_
+Abomane is complete and working. It is an Astro 7 application in server mode,
+served by the Node adapter, styled with Tailwind 4, storing everything in one
+SQLite file through Drizzle ORM.
+
+**What it does.** Tracks subscriptions on any billing cycle: monthly, quarterly
+and yearly presets, custom "every N days / weeks / months" intervals, and
+one-time payments. Shows what they cost per month, quarter and year, in two modes
+that can be toggled on any view. Lists upcoming charges for the next 30, 60 or 90
+days. Works out cancellation deadlines from a notice period and a minimum
+contract term, and flags the ones falling due within 30 days. Groups everything
+by category and tag.
+
+**The idea the whole codebase rests on.** Every cycle is stored as an interval
+count plus a unit, so monthly is `1 month`, quarterly `3 month` and yearly
+`12 month`. There is no separate code path per cycle, which is why supporting
+"every 45 days" cost nothing extra. The maths that follows from it lives in pure
+functions over ISO date strings in `src/lib/schedule.ts`, with no database access
+and no `Date` objects, because billing dates are calendar facts and a time zone
+must never shift one across a month boundary.
+
+**The two cost modes** are the answer to the original requirement that not
+everything is monthly. Normalized spreads recurring cost evenly across the months
+a subscription is active, so a yearly charge counts as one twelfth per month;
+actual counts only charges that really land in the period. Verified on real data:
+a yearly subscription of 289,00 EUR shows its full amount in its own month in
+actual mode, nothing the month before, and 24,08 EUR per month when normalized.
+
+**Testing.** 76 unit tests cover the schedule arithmetic, cancellation deadlines,
+money parsing, form validation, URL-state mapping and the database layer. 18
+Playwright tests cover the user journeys on desktop and mobile viewports against
+a production build. The end-to-end suite earned its place by catching a
+delete-redirect bug the unit tests could not see.
+
+**One thing is not verified.** The Docker image has never been built, because
+this environment's egress policy blocks Docker Hub. Everything around it was
+checked, including the container's exact runtime path with production-only
+dependencies, but the image build itself needs one run on a machine with registry
+access. See Phase 6.
+
+**Known limitations,** all deliberate and all listed as out of scope in the
+original plan: single currency (euro), no user accounts or password, no email
+reminders, no CSV or JSON import and export, and no price history. The first two
+are the ones that matter operationally, and the README says so plainly.
 
 ## Deployment Plan
 
-_(write when all phases complete: step-by-step deployment instructions)_
+### First deployment
+
+1. **Get the code onto the host.**
+
+   ```bash
+   git clone https://github.com/stasnowak/Abomane.git
+   cd Abomane
+   ```
+
+2. **Decide how it should be published.** The default binds to `127.0.0.1`, which
+   is right for a machine you sit at. For a server, put authentication in front
+   of it first (reverse proxy with basic auth or an identity provider, or a VPN),
+   then:
+
+   ```bash
+   cp compose.override.example.yaml compose.override.yaml
+   # edit compose.override.yaml to bind where your proxy expects it
+   ```
+
+   Do not skip this step and publish it directly. There is no login.
+
+3. **Start it.**
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+   The first build takes a few minutes. Migrations run before the server binds.
+
+4. **Confirm it is healthy.**
+
+   ```bash
+   curl -fsS http://127.0.0.1:4321/healthz   # {"status":"ok"}
+   docker compose ps                          # State should read "healthy"
+   ```
+
+   If the container restarts in a loop, `docker compose logs app` shows the
+   migration output first; a failure there is the usual cause.
+
+5. **Open it** at the address you published, and add your first Abo.
+
+### Upgrading
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Pending migrations apply automatically on start. Take a backup first if the
+release notes mention a schema change:
+
+```bash
+docker compose cp app:/data/abomane.db ./abomane-$(date +%F).db
+```
+
+### Backup and restore
+
+Back up:
+
+```bash
+docker compose cp app:/data/abomane.db ./abomane-backup.db
+```
+
+Restore:
+
+```bash
+docker compose down
+docker compose up -d                      # recreates the volume if needed
+docker compose cp ./abomane-backup.db app:/data/abomane.db
+docker compose restart app
+```
+
+Copying while running is fine for personal use; stop the container first for a
+guaranteed-consistent snapshot.
+
+### Running a prebuilt image instead
+
+Tagging a release (`v*`) makes CI publish to `ghcr.io/stasnowak/abomane`. To use
+it, uncomment the `image` and `build: !reset null` lines in
+`compose.override.yaml`, then:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+### Before the first real deployment
+
+The image build has not been executed yet (Phase 6). On a machine with registry
+access, run these once and record the result:
+
+```bash
+docker compose up -d --build
+curl -fsS http://127.0.0.1:4321/healthz
+docker images abomane:latest --format '{{.Size}}'   # expected under ~250 MB
+# add an Abo through the UI, then:
+docker compose down && docker compose up -d          # data must survive
+```
