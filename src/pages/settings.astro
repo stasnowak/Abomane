@@ -145,7 +145,11 @@ const inputClass =
             </li>
           ))
         }
-        {tags.length === 0 && <li class="py-2 text-sm text-slate-500 dark:text-slate-400">No tags yet.</li>}
+        {
+          tags.length === 0 && (
+            <li class="py-2 text-sm text-slate-500 dark:text-slate-400">No tags yet.</li>
+          )
+        }
       </ul>
     </div>
   </div>

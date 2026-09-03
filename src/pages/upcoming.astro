@@ -28,7 +28,11 @@ for (const subscription of subscriptions) {
   }
 }
 charges.sort((a, b) =>
-  a.date === b.date ? a.subscription.name.localeCompare(b.subscription.name) : a.date < b.date ? -1 : 1,
+  a.date === b.date
+    ? a.subscription.name.localeCompare(b.subscription.name)
+    : a.date < b.date
+      ? -1
+      : 1,
 );
 
 const total = charges.reduce((sum, charge) => sum + charge.subscription.amountCents, 0);
@@ -104,8 +108,8 @@ const ranges = [30, 60, 90];
                 {entry.subscription.name}
               </a>
               <span class="text-amber-800 dark:text-amber-300">
-                Give notice by {formatDate(entry.deadline!.deadline)} ·{' '}
-                {entry.deadline!.daysLeft} days left
+                Give notice by {formatDate(entry.deadline!.deadline)} · {entry.deadline!.daysLeft}{' '}
+                days left
               </span>
             </li>
           ))}
@@ -145,7 +149,7 @@ const ranges = [30, 60, 90];
                 </div>
                 <ul class="flex flex-col gap-1.5">
                   {group.items.map((item) => (
-                    <li class="flex items-center justify-between gap-3">
+                    <li class="flex items-center justify-between gap-3" data-testid="abo-row">
                       <span class="flex min-w-0 items-center gap-2">
                         <a
                           href={`/abos/${item.subscription.id}`}

@@ -34,7 +34,8 @@ export function parseOverviewQuery(params: URLSearchParams, today: string): Over
   const mode = MODES.includes(modeParam as CostMode) ? (modeParam as CostMode) : 'normalized';
 
   const periodParam = params.get('period');
-  const period = (periodParam && parsePeriodKey(kind, periodParam)) || periodContaining(kind, today);
+  const period =
+    (periodParam && parsePeriodKey(kind, periodParam)) || periodContaining(kind, today);
 
   return { kind, period, mode };
 }

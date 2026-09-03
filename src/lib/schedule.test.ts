@@ -106,7 +106,9 @@ describe('nextBillingDate', () => {
   });
 
   it('returns null once the subscription has ended', () => {
-    expect(nextBillingDate(sub({ status: 'cancelled', endDate: '2026-03-15' }), '2026-04-01')).toBeNull();
+    expect(
+      nextBillingDate(sub({ status: 'cancelled', endDate: '2026-03-15' }), '2026-04-01'),
+    ).toBeNull();
   });
 
   it('handles a one-time payment already in the past', () => {
@@ -124,7 +126,9 @@ describe('normalizedMonthlyCents', () => {
   });
 
   it('converts weekly and daily intervals via average month length', () => {
-    const weekly = normalizedMonthlyCents(sub({ amountCents: 100, intervalCount: 1, intervalUnit: 'week' }));
+    const weekly = normalizedMonthlyCents(
+      sub({ amountCents: 100, intervalCount: 1, intervalUnit: 'week' }),
+    );
     expect(weekly).toBeCloseTo((100 * 365.25) / 12 / 7, 6);
   });
 
@@ -175,7 +179,12 @@ describe('periodTotals', () => {
   it('groups by category and sorts rows by cost', () => {
     const a = { ...monthly, categoryId: 1, categoryName: 'Streaming', categoryColor: 'violet' };
     const b = { ...yearly, categoryId: 1, categoryName: 'Streaming', categoryColor: 'violet' };
-    const c = { ...sub({ amountCents: 5000 }), categoryId: 2, categoryName: 'Software', categoryColor: 'blue' };
+    const c = {
+      ...sub({ amountCents: 5000 }),
+      categoryId: 2,
+      categoryName: 'Software',
+      categoryColor: 'blue',
+    };
 
     const totals = periodTotals([a, b, c], periodContaining('month', '2026-06-01'), 'normalized');
     expect(totals.rows[0]?.subscription.amountCents).toBe(5000);
@@ -245,11 +254,19 @@ describe('cancelByDate', () => {
   it('returns null without a notice period, for one-time payments and when cancelled', () => {
     expect(cancelByDate(sub(), '2026-01-01')).toBeNull();
     expect(
-      cancelByDate(sub({ cycle: 'one_time', noticePeriodCount: 1, noticePeriodUnit: 'month' }), '2026-01-01'),
+      cancelByDate(
+        sub({ cycle: 'one_time', noticePeriodCount: 1, noticePeriodUnit: 'month' }),
+        '2026-01-01',
+      ),
     ).toBeNull();
     expect(
       cancelByDate(
-        sub({ status: 'cancelled', endDate: '2026-05-01', noticePeriodCount: 1, noticePeriodUnit: 'month' }),
+        sub({
+          status: 'cancelled',
+          endDate: '2026-05-01',
+          noticePeriodCount: 1,
+          noticePeriodUnit: 'month',
+        }),
         '2026-01-01',
       ),
     ).toBeNull();

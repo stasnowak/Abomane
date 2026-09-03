@@ -1,0 +1,30 @@
+services:
+  app:
+    build: .
+    image: abomane:latest
+    restart: unless-stopped
+    # Bound to localhost by default. Abomane has no login, so publishing it on
+    # every interface would put your subscription data on the network for
+    # anyone who can reach the host. See compose.override.example.yaml to
+    # expose it deliberately, behind a proxy that handles authentication.
+    ports:
+      - '127.0.0.1:4321:4321'
+    volumes:
+      - abomane-data:/data
+    environment:
+      DATABASE_PATH: /data/abomane.db
+      HOST: 0.0.0.0
+      PORT: 4321
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4321/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  abomane-data:

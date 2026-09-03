@@ -38,6 +38,7 @@ if needed). Use this self-documenting template:
 <1-2 sentence goal and scope.>
 
 ## For Future Agents
+
 As work proceeds: mark checkboxes `- [x]` as items complete; when a phase is done,
 set its status to `Complete` and write its **Phase Summary** (what was done, key
 decisions, anything needed to continue with zero context); run the phase's
@@ -45,29 +46,40 @@ decisions, anything needed to continue with zero context); run the phase's
 done, fill in **Final Recap** and **Deployment Plan**.
 
 ## Phase 1: <Title>
-Status: Not started   <!-- Not started | In progress | Complete -->
+
+Status: Not started <!-- Not started | In progress | Complete -->
 
 - [ ] <concrete, actionable item>
 - [ ] <concrete, actionable item>
 
 ### Verification Plan
+
 - <command/check the agent can run autonomously, with expected result>
 
 ### Phase Summary
+
 _(write when phase completes)_
 
 ## Phase 2: <Title>
+
 Status: Not started
+
 - [ ] <actionable item>
+
 ### Verification Plan
+
 - <autonomous check>
+
 ### Phase Summary
+
 _(write when phase completes)_
 
 ## Final Recap
+
 _(write when all phases complete: summary of the entire piece of work)_
 
 ## Deployment Plan
+
 _(write when all phases complete: step-by-step deployment instructions)_
 ```
 

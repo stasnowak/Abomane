@@ -43,7 +43,9 @@ const rows = listSubscriptions({
 }));
 
 if (sort === 'amount') {
-  rows.sort((a, b) => b.monthly - a.monthly || b.subscription.amountCents - a.subscription.amountCents);
+  rows.sort(
+    (a, b) => b.monthly - a.monthly || b.subscription.amountCents - a.subscription.amountCents,
+  );
 } else if (sort === 'next') {
   rows.sort((a, b) => {
     if (a.next === b.next) return a.subscription.name.localeCompare(b.subscription.name);
@@ -84,8 +86,7 @@ const selectClass =
       <h1 class="text-2xl font-semibold tracking-tight">Abos</h1>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
         {rows.length}
-        {rows.length === 1 ? 'subscription' : 'subscriptions'} · {formatEur(monthlyTotal)} per month
-        normalized
+        {rows.length === 1 ? 'subscription' : 'subscriptions'} · {formatEur(monthlyTotal)} per month normalized
       </p>
     </div>
     <a
@@ -184,7 +185,10 @@ const selectClass =
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
             {rows.map(({ subscription, next, monthly }) => (
-              <tr class="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+              <tr
+                class="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                data-testid="abo-row"
+              >
                 <td class="px-4 py-3">
                   <a href={`/abos/${subscription.id}`} class="font-medium hover:underline">
                     {subscription.name}
@@ -194,10 +198,15 @@ const selectClass =
                   )}
                 </td>
                 <td class="px-4 py-3">
-                  <CategoryBadge name={subscription.categoryName} color={subscription.categoryColor} />
+                  <CategoryBadge
+                    name={subscription.categoryName}
+                    color={subscription.categoryColor}
+                  />
                 </td>
                 <td class="tabular px-4 py-3 text-right">{formatEur(subscription.amountCents)}</td>
-                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{cycleLabel(subscription)}</td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-400">
+                  {cycleLabel(subscription)}
+                </td>
                 <td class="tabular px-4 py-3 text-right text-slate-600 dark:text-slate-400">
                   {monthly > 0 ? formatEur(monthly) : '—'}
                 </td>
@@ -214,7 +223,7 @@ const selectClass =
 
         <ul class="divide-y divide-slate-100 sm:hidden dark:divide-slate-800">
           {rows.map(({ subscription, next, monthly }) => (
-            <li>
+            <li data-testid="abo-row">
               <a href={`/abos/${subscription.id}`} class="flex flex-col gap-2 p-4">
                 <div class="flex items-start justify-between gap-3">
                   <div>
@@ -235,7 +244,10 @@ const selectClass =
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                   <StatusBadge status={subscription.status} />
-                  <CategoryBadge name={subscription.categoryName} color={subscription.categoryColor} />
+                  <CategoryBadge
+                    name={subscription.categoryName}
+                    color={subscription.categoryColor}
+                  />
                 </div>
               </a>
             </li>

@@ -41,8 +41,12 @@ const largest = totals.rows[0];
 const deadlines = subscriptions
   .map((subscription) => ({ subscription, deadline: cancelByDate(subscription, today) }))
   .filter(
-    (entry): entry is { subscription: (typeof subscriptions)[number]; deadline: NonNullable<ReturnType<typeof cancelByDate>> } =>
-      entry.deadline !== null && entry.deadline.daysLeft <= 30,
+    (
+      entry,
+    ): entry is {
+      subscription: (typeof subscriptions)[number];
+      deadline: NonNullable<ReturnType<typeof cancelByDate>>;
+    } => entry.deadline !== null && entry.deadline.daysLeft <= 30,
   )
   .sort((a, b) => a.deadline.daysLeft - b.deadline.daysLeft);
 
@@ -138,7 +142,9 @@ const modeExplainer =
       <p class="text-xs font-medium text-slate-500 uppercase dark:text-slate-500">
         Total {periodLabel(period)}
       </p>
-      <p class="tabular mt-1 text-2xl font-semibold">{formatEur(totals.totalCents)}</p>
+      <p class="tabular mt-1 text-2xl font-semibold" data-testid="period-total">
+        {formatEur(totals.totalCents)}
+      </p>
       <p class="mt-1 text-xs text-slate-500 dark:text-slate-500">
         {
           delta === 0
@@ -169,13 +175,13 @@ const modeExplainer =
       <p class="tabular mt-1 text-2xl font-semibold">{deadlines.length}</p>
       <p class="mt-1 text-xs text-slate-500 dark:text-slate-500">
         {
-          deadlines.length === 0
-            ? 'No deadlines in the next 30 days'
-            : (
-                <a href="/upcoming" class="text-violet-600 hover:underline dark:text-violet-400">
-                  See the deadlines →
-                </a>
-              )
+          deadlines.length === 0 ? (
+            'No deadlines in the next 30 days'
+          ) : (
+            <a href="/upcoming" class="text-violet-600 hover:underline dark:text-violet-400">
+              See the deadlines →
+            </a>
+          )
         }
       </p>
     </div>
@@ -185,7 +191,13 @@ const modeExplainer =
 
   <div class:list={[cardClass, 'mb-5']}>
     <h2 class="mb-4 text-sm font-semibold text-slate-500 uppercase dark:text-slate-500">
-      {kind === 'month' ? 'Across the year' : kind === 'quarter' ? 'Across the quarters' : 'Across the years'}
+      {
+        kind === 'month'
+          ? 'Across the year'
+          : kind === 'quarter'
+            ? 'Across the quarters'
+            : 'Across the years'
+      }
     </h2>
     <div class="flex items-end gap-1 overflow-x-auto sm:gap-2">
       {
@@ -272,7 +284,7 @@ const modeExplainer =
         ) : (
           <ul class="flex flex-col divide-y divide-slate-100 dark:divide-slate-800">
             {totals.rows.map((row) => (
-              <li class="flex items-center justify-between gap-3 py-2.5">
+              <li class="flex items-center justify-between gap-3 py-2.5" data-testid="abo-row">
                 <div class="min-w-0">
                   <a
                     href={`/abos/${row.subscription.id}`}
@@ -287,9 +299,7 @@ const modeExplainer =
                     />
                     <span>{cycleLabel(row.subscription)}</span>
                     {row.dates.length > 0 && (
-                      <span>
-                        {row.dates.map((date) => formatDateShort(date)).join(', ')}
-                      </span>
+                      <span>{row.dates.map((date) => formatDateShort(date)).join(', ')}</span>
                     )}
                   </p>
                 </div>

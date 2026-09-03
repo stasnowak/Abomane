@@ -15,15 +15,19 @@ import {
 } from '../../../lib/schedule';
 
 const id = Number(Astro.params.id);
+
+// The delete result has to be read before loading the record. Once the row is
+// gone the lookup below returns nothing, and checking it second would answer
+// 404 for a delete that actually succeeded.
+const deleted = Astro.getActionResult(actions.subscription.remove);
+if (deleted && !deleted.error) {
+  return Astro.redirect('/abos');
+}
+
 const subscription = Number.isInteger(id) ? getSubscription(id) : null;
 
 if (!subscription) {
   return new Response(null, { status: 404, statusText: 'Not found' });
-}
-
-const deleted = Astro.getActionResult(actions.subscription.remove);
-if (deleted && !deleted.error) {
-  return Astro.redirect('/abos');
 }
 
 const today = todayIso();

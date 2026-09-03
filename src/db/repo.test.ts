@@ -85,7 +85,11 @@ describe('subscriptions', () => {
 
     createSubscription(input({ name: 'Netflix', categoryId: streaming }), [], db);
     createSubscription(input({ name: 'Hetzner', vendor: 'Hetzner Online' }), [work], db);
-    createSubscription(input({ name: 'Old Gym', status: 'cancelled', endDate: '2026-02-01' }), [], db);
+    createSubscription(
+      input({ name: 'Old Gym', status: 'cancelled', endDate: '2026-02-01' }),
+      [],
+      db,
+    );
 
     expect(listSubscriptions({ status: 'active' }, db)).toHaveLength(2);
     expect(listSubscriptions({ status: 'all' }, db)).toHaveLength(3);

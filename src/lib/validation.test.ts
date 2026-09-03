@@ -23,7 +23,9 @@ describe('subscriptionFormSchema', () => {
   });
 
   it('expands the quarterly and yearly presets to months', () => {
-    expect(subscriptionFormSchema.parse({ ...base, cyclePreset: 'quarterly' }).intervalCount).toBe(3);
+    expect(subscriptionFormSchema.parse({ ...base, cyclePreset: 'quarterly' }).intervalCount).toBe(
+      3,
+    );
     expect(subscriptionFormSchema.parse({ ...base, cyclePreset: 'yearly' }).intervalCount).toBe(12);
   });
 
@@ -38,7 +40,9 @@ describe('subscriptionFormSchema', () => {
   });
 
   it('marks a one-time payment', () => {
-    expect(subscriptionFormSchema.parse({ ...base, cyclePreset: 'one_time' }).cycle).toBe('one_time');
+    expect(subscriptionFormSchema.parse({ ...base, cyclePreset: 'one_time' }).cycle).toBe(
+      'one_time',
+    );
   });
 
   it('rejects an unparseable amount', () => {

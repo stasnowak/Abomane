@@ -199,7 +199,11 @@ export function setSubscriptionTags(id: number, tagIds: number[], db: Db = getDb
 // ---------------------------------------------------------------------------
 
 export function listCategories(db: Db = getDb()): CategoryRow[] {
-  return db.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.name)).all();
+  return db
+    .select()
+    .from(categories)
+    .orderBy(asc(categories.sortOrder), asc(categories.name))
+    .all();
 }
 
 export function upsertCategory(

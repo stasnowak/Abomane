@@ -27,19 +27,25 @@ export const subscriptions = sqliteTable(
     amountCents: integer('amount_cents').notNull(),
     categoryId: integer('category_id').references(() => categories.id, { onDelete: 'set null' }),
 
-    cycle: text('cycle', { enum: ['recurring', 'one_time'] }).notNull().default('recurring'),
+    cycle: text('cycle', { enum: ['recurring', 'one_time'] })
+      .notNull()
+      .default('recurring'),
     /**
      * Every cycle is stored as a count plus a unit, so monthly is `1 month`,
      * quarterly `3 month` and yearly `12 month`. One code path, no special cases.
      */
     intervalCount: integer('interval_count').notNull().default(1),
-    intervalUnit: text('interval_unit', { enum: ['day', 'week', 'month'] }).notNull().default('month'),
+    intervalUnit: text('interval_unit', { enum: ['day', 'week', 'month'] })
+      .notNull()
+      .default('month'),
 
     /** Anchor date. All later charges are computed as offsets from this day. */
     firstBillingDate: text('first_billing_date').notNull(),
     endDate: text('end_date'),
 
-    status: text('status', { enum: ['active', 'paused', 'cancelled'] }).notNull().default('active'),
+    status: text('status', { enum: ['active', 'paused', 'cancelled'] })
+      .notNull()
+      .default('active'),
     pausedAt: text('paused_at'),
 
     noticePeriodCount: integer('notice_period_count'),

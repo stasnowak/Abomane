@@ -60,7 +60,9 @@ export const subscriptionFormSchema = z
         const trimmed = value?.trim() ?? '';
         return trimmed === '' ? null : Number(trimmed);
       })
-      .refine((value) => value === null || Number.isInteger(value), { message: 'Invalid category' }),
+      .refine((value) => value === null || Number.isInteger(value), {
+        message: 'Invalid category',
+      }),
 
     cyclePreset: z.enum(CYCLE_PRESETS),
     intervalCount: z.string().optional(),
