@@ -1,0 +1,22 @@
+---
+interface Props {
+  status: 'active' | 'paused' | 'cancelled';
+}
+const { status } = Astro.props;
+
+const styles: Record<Props['status'], string> = {
+  active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+  paused: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  cancelled: 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+};
+
+const labels: Record<Props['status'], string> = {
+  active: 'Active',
+  paused: 'Paused',
+  cancelled: 'Cancelled',
+};
+---
+
+<span class:list={['rounded-full px-2 py-0.5 text-xs font-medium', styles[status]]}>
+  {labels[status]}
+</span>

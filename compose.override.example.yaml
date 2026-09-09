@@ -1,0 +1,23 @@
+# Copy to compose.override.yaml to change how Abomane is published or to run a
+# prebuilt image instead of building locally:
+#
+#   cp compose.override.example.yaml compose.override.yaml
+#   docker compose up -d
+#
+# Abomane has NO login. The base compose file binds it to 127.0.0.1 so a plain
+# `docker compose up` is safe on your own machine. Only widen that if something
+# in front of it handles authentication: a reverse proxy with basic auth or an
+# identity provider, a VPN, or a private network.
+#
+# `!override` replaces the base list instead of appending to it. Without it
+# Compose would keep the localhost binding *and* add this one, leaving the app
+# reachable from outside after all.
+services:
+  app:
+    ports: !override
+      - '4321:4321'
+
+    # Run a published image rather than building from source. `!reset` removes
+    # the build section the base file defines.
+    # image: ghcr.io/stasnowak/abomane:latest
+    # build: !reset null
