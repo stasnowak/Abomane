@@ -1,7 +1,21 @@
-# Debian slim rather than Alpine: better-sqlite3 ships prebuilt glibc binaries,
-# so the image needs no compiler toolchain and the build stays fast.
-FROM node:22-bookworm-slim AS deps
+# Debian slim rather than Alpine: better-sqlite3 compiles against glibc without
+# the musl patches Alpine would need. It has no prebuilt binary for this
+# Node/platform combination, so the dependency stages install a compiler
+# toolchain and build it from source; the runtime stage copies only the
+# finished node_modules and stays free of build tools.
+FROM node:22-bookworm-slim AS base
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Production dependencies, compiled once and reused by the runtime stage.
+FROM base AS prod-deps
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+# Full dependency tree (dev included) so Astro can build the site.
+FROM base AS deps
 COPY package.json package-lock.json ./
 RUN npm ci
 
@@ -19,7 +33,7 @@ ENV NODE_ENV=production \
     MIGRATIONS_DIR=/app/drizzle
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=prod-deps /app/node_modules ./node_modules
 
 COPY --from=build /app/dist ./dist
 COPY drizzle ./drizzle

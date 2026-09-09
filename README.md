@@ -17,7 +17,10 @@ cd Abomane
 docker compose up -d
 ```
 
-Open <http://localhost:4321>.
+Open <http://localhost:4322>.
+
+The container listens on 4321 internally; compose publishes it on host port
+4322 so it does not collide with an Astro dev server on the default port.
 
 The database is a single SQLite file in the `abomane-data` volume. Migrations
 run automatically when the container starts, so upgrading is `docker compose
